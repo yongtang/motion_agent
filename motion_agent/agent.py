@@ -1,9 +1,49 @@
 import rclpy
 from rclpy.node import Node
 
-from std_msgs.msg import String
+from geometry_msgs.msg import Pose
 
 import asyncio, websockets, json
+
+import json
+
+
+def dict_to_ros2_msg(msg_type, data_dict):
+    msg = msg_type()
+
+    for key, value in data_dict.items():
+        if hasattr(msg, key):
+            field_type = type(getattr(msg, key))
+
+            if isinstance(value, dict):  # Nested message
+                nested_msg_type = field_type
+                setattr(msg, key, dict_to_ros2_msg(nested_msg_type, value))
+
+            elif isinstance(value, list):  # List of messages or primitives
+                list_type = getattr(msg, key).__class__.__args__[
+                    0
+                ]  # Get the element type
+                setattr(
+                    msg,
+                    key,
+                    [
+                        (
+                            dict_to_ros2_msg(list_type, v)
+                            if isinstance(v, dict)
+                            else list_type(v)
+                        )
+                        for v in value
+                    ],
+                )
+
+            else:  # Primitive types (int, float, str, bool, etc.)
+                if field_type == float and isinstance(
+                    value, int
+                ):  # Fix int -> float issue
+                    value = float(value)
+                setattr(msg, key, value)
+
+    return msg
 
 
 class Agent(Node):
@@ -12,13 +52,12 @@ class Agent(Node):
         super().__init__("agent")
         self.url = "ws://localhost:8081"
         self.sub = "test.subject"
-        self.publisher_ = self.create_publisher(String, "topic", 10)
+        self.publisher_ = self.create_publisher(Pose, "pose", 10)
 
     def callback(self, data):
-        msg = String()
-        msg.data = "Received: {}".format(data)
+        msg = dict_to_ros2_msg(Pose, data)
         self.publisher_.publish(msg)
-        self.get_logger().info('Publishing: "%s"' % msg.data)
+        self.get_logger().info('Publishing: "%s"' % msg)
 
 
 async def run(node):

@@ -50,8 +50,12 @@ class Agent(Node):
 
     def __init__(self):
         super().__init__("agent")
-        self.url = "ws://localhost:8081"
-        self.sub = "test.subject"
+        self.declare_parameter("url", "ws://localhost:8081")
+        self.declare_parameter("sub", "test.subject")
+
+        self.url = self.get_parameter("url").get_parameter_value().string_value
+        self.sub = self.get_parameter("sub").get_parameter_value().string_value
+
         self.publisher_ = self.create_publisher(Pose, "pose", 10)
 
     def callback(self, data):

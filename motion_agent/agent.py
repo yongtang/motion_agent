@@ -64,7 +64,6 @@ class Agent(Node):
 
 
 async def run(node):
-
     try:
         while True:
             try:
@@ -74,20 +73,19 @@ async def run(node):
                         try:
                             response = await asyncio.wait_for(ws.recv(), timeout=1.0)
                             node.get_logger().info("Response: {}".format(response))
-                            head, body = response.split(b"\r\n", 1)
-                            if head.startswith(b"MSG "):
-                                assert body.endswith(b"\r\n")
-                                body = body[:-2]
 
-                                op, sub, sid, count = head.split(b" ", 3)
-                                assert op == b"MSG"
-                                assert sub
-                                assert sid
-                                assert int(count) == len(body)
+                            # ✅ Support multiple MSG entries in one response
+                            parts = response.split(b"\r\n")
+                            for head, body in zip(*[iter(parts)] * 2):
+                                if head.startswith(b"MSG "):
+                                    op, sub, sid, count = head.split(b" ", 3)
+                                    assert op == b"MSG"
+                                    assert sub
+                                    assert sid
+                                    assert int(count) == len(body)
 
-                                data = json.loads(body)
-
-                                node.callback(data)
+                                    data = json.loads(body)
+                                    node.callback(data)
 
                         except asyncio.TimeoutError:
                             pass

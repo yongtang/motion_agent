@@ -23,15 +23,20 @@ received_messages = []
 
 @pytest.fixture(scope="module")
 def websocket_server():
-    """Start a mock WebSocket server that sends a valid message."""
+    """Start a mock WebSocket server that sends 1 + 2 messages (3 total)."""
     stop_event = threading.Event()
 
     async def ws_main():
         async def handler(websocket):
             await websocket.recv()  # Expect SUB command
+
             body = json.dumps(TEST_MESSAGE).encode("utf-8")
             msg = f"MSG test.subject 1 {len(body)}\r\n".encode() + body + b"\r\n"
+
+            # Send 1 message
             await websocket.send(msg)
+            # Send 2 messages in one frame
+            await websocket.send(msg + msg)
 
         async with websockets.serve(handler, "localhost", 8089):
             while not stop_event.is_set():
@@ -95,22 +100,24 @@ def ros2_node():
 
 
 def test_pose_message_received(websocket_server, agent_process, ros2_node):
-    """Verify that a Pose message is published to the /pose topic."""
+    """Verify that multiple Pose messages are published to the /pose topic."""
 
     def callback(msg):
         received_messages.append(msg)
 
     ros2_node.create_subscription(Pose, "pose", callback, 10)
 
-    # Wait up to 5 seconds for the message
+    # Wait up to 5 seconds for 3 messages
     start = time.time()
-    while not received_messages and time.time() - start < 5:
+    while len(received_messages) < 3 and time.time() - start < 5:
         rclpy.spin_once(ros2_node, timeout_sec=0.1)
 
-    assert received_messages, "No message received on /pose topic"
+    assert (
+        len(received_messages) >= 3
+    ), f"Expected at least 3 messages, got {len(received_messages)}"
 
-    msg = received_messages[0]
-    assert msg.position.x == pytest.approx(TEST_MESSAGE["position"]["x"])
-    assert msg.position.y == pytest.approx(TEST_MESSAGE["position"]["y"])
-    assert msg.position.z == pytest.approx(TEST_MESSAGE["position"]["z"])
-    assert msg.orientation.w == pytest.approx(TEST_MESSAGE["orientation"]["w"])
+    for msg in received_messages[:3]:
+        assert msg.position.x == pytest.approx(TEST_MESSAGE["position"]["x"])
+        assert msg.position.y == pytest.approx(TEST_MESSAGE["position"]["y"])
+        assert msg.position.z == pytest.approx(TEST_MESSAGE["position"]["z"])
+        assert msg.orientation.w == pytest.approx(TEST_MESSAGE["orientation"]["w"])

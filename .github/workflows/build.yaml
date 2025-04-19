@@ -1,0 +1,46 @@
+name: GitHub Action
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    env:
+      ROS_DISTRO: humble
+      ROS_PYTHON_VERSION: 3
+    steps:
+      - uses: actions/checkout@v3
+      - uses: ros-tooling/setup-ros@v0.7
+        with:
+          required-ros-distributions: humble
+      - run: |
+          sudo apt update
+          sudo apt install python3-pip -y -qq
+          sudo python3 -m pip install -U pip
+          sudo python3 -m pip install -U websockets
+          source /opt/ros/humble/setup.bash
+          rosdep update
+          rosdep install --from-paths . --ignore-src -y
+      - run: |
+          source /opt/ros/humble/setup.bash
+          colcon build --event-handlers console_cohesion+ --packages-select motion_agent
+          source install/setup.bash
+          colcon test --event-handlers console_cohesion+ --packages-select motion_agent --pytest-args -s -v
+      - run: |
+          echo "::group::ROS 2 Test Logs"
+          if find log/latest_test/motion_agent/ -name '*.log' | grep -q .; then
+            for logfile in $(find log/latest_test/motion_agent/ -name '*.log'); do
+              echo "📄 BEGIN LOG: $logfile"
+              echo "-----------------------------------"
+              cat "$logfile"
+              echo "-----------------------------------"
+              echo ""
+            done
+          else
+            echo "No test logs found!"
+          fi
+          echo "::endgroup::"
+          colcon test-result --verbose
+        if: always()

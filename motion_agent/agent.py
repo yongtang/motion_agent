@@ -3,7 +3,7 @@ import json
 
 import rclpy
 import websockets
-from geometry_msgs.msg import Pose
+from geometry_msgs.msg import Pose, PoseStamped
 from rclpy.node import Node
 
 
@@ -51,14 +51,20 @@ class Agent(Node):
         super().__init__("agent")
         self.declare_parameter("url", "ws://localhost:8081")
         self.declare_parameter("sub", "test.subject")
+        self.declare_parameter("frame", "base_link")
 
         self.url = self.get_parameter("url").get_parameter_value().string_value
         self.sub = self.get_parameter("sub").get_parameter_value().string_value
+        self.frame = self.get_parameter("frame").get_parameter_value().string_value
 
-        self.publisher_ = self.create_publisher(Pose, "pose", 10)
+        self.publisher_ = self.create_publisher(PoseStamped, "pose", 10)
 
     def callback(self, data):
-        msg = dict_to_ros2_msg(Pose, data)
+        pose = dict_to_ros2_msg(Pose, data)
+        msg = PoseStamped()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = self.frame
+        msg.pose = pose
         self.publisher_.publish(msg)
         self.get_logger().info('Publishing: "%s"' % msg)
 

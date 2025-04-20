@@ -9,7 +9,7 @@ import time
 import pytest
 import rclpy
 import websockets
-from geometry_msgs.msg import Pose
+from geometry_msgs.msg import PoseStamped  # ✅ Updated import
 from rclpy.node import Node
 
 # The test message to send from the mock WebSocket server
@@ -23,7 +23,6 @@ received_messages = []
 
 @pytest.fixture(scope="module")
 def websocket_server():
-    """Start a mock WebSocket server that sends 1 + 2 messages (3 total)."""
     stop_event = threading.Event()
 
     async def ws_main():
@@ -47,24 +46,22 @@ def websocket_server():
 
     thread = threading.Thread(target=start_server, daemon=True)
     thread.start()
-    time.sleep(1)  # Let the server start
+    time.sleep(1)
 
-    yield  # Run the test
-
+    yield
     stop_event.set()
     thread.join()
 
 
 @pytest.fixture(scope="module")
 def agent_process():
-    """Launch the ROS 2 agent node using ros2 run."""
     assert shutil.which("ros2"), "'ros2' command not found in PATH"
 
     cmd = [
         "ros2",
         "run",
-        "motion_agent",  # ROS 2 package name
-        "agent",  # Entry point defined in setup.py
+        "motion_agent",
+        "agent",
         "--ros-args",
         "-p",
         "url:=ws://localhost:8089",
@@ -79,7 +76,7 @@ def agent_process():
         env={**os.environ, "RCUTILS_LOGGING_BUFFERED_STREAM": "1"},
     )
 
-    time.sleep(2)  # Give time to connect
+    time.sleep(2)
     yield proc
 
     proc.terminate()
@@ -91,7 +88,6 @@ def agent_process():
 
 @pytest.fixture(scope="module")
 def ros2_node():
-    """Start a ROS 2 test node."""
     rclpy.init()
     node = Node("test_agent_subscriber")
     yield node
@@ -100,24 +96,30 @@ def ros2_node():
 
 
 def test_pose_message_received(websocket_server, agent_process, ros2_node):
-    """Verify that multiple Pose messages are published to the /pose topic."""
+    """Verify that multiple PoseStamped messages are published to the /pose topic."""
+
+    received_messages.clear()
 
     def callback(msg):
+        print(f"[DEBUG] Received message of type: {type(msg)}")
         received_messages.append(msg)
 
-    ros2_node.create_subscription(Pose, "pose", callback, 10)
+    ros2_node.create_subscription(PoseStamped, "pose", callback, 10)
 
     # Wait up to 5 seconds for 3 messages
     start = time.time()
     while len(received_messages) < 3 and time.time() - start < 5:
         rclpy.spin_once(ros2_node, timeout_sec=0.1)
 
+    print(f"[DEBUG] Total received messages: {len(received_messages)}")
+
     assert (
         len(received_messages) >= 3
     ), f"Expected at least 3 messages, got {len(received_messages)}"
 
     for msg in received_messages[:3]:
-        assert msg.position.x == pytest.approx(TEST_MESSAGE["position"]["x"])
-        assert msg.position.y == pytest.approx(TEST_MESSAGE["position"]["y"])
-        assert msg.position.z == pytest.approx(TEST_MESSAGE["position"]["z"])
-        assert msg.orientation.w == pytest.approx(TEST_MESSAGE["orientation"]["w"])
+        pose = msg.pose
+        assert pose.position.x == pytest.approx(TEST_MESSAGE["position"]["x"])
+        assert pose.position.y == pytest.approx(TEST_MESSAGE["position"]["y"])
+        assert pose.position.z == pytest.approx(TEST_MESSAGE["position"]["z"])
+        assert pose.orientation.w == pytest.approx(TEST_MESSAGE["orientation"]["w"])
